@@ -1,0 +1,12 @@
+{
+  "id": "nsum_bridge",
+  "version": "0.1.0",
+  "name": "NSUM Bridge (Server)",
+  "description": "Sync NSUM modpack content and install/switch server core + loader before the server starts",
+  "author": ["HiBerNET"],
+  "dependencies": {
+    "mcdreforged": ">=2.10.0"
+  },
+  "entrypoint": "nsum_bridge",
+  "link": "https://github.com/HiBer2007/nsum-bridge-mcdr"
+}
