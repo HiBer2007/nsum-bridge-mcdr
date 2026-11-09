@@ -18,7 +18,7 @@ from .config import load_config
 from .instance import Instance
 from .prepare import PrepareResult, prepare
 
-PLUGIN_VERSION = "0.1.0"
+PLUGIN_VERSION = "0.2.0"
 
 _server = None
 _logger = None
@@ -40,7 +40,7 @@ def on_load(server, old_module):
     if config.prepare_on_load:
         _log("[NSUM] 配置要求在加载时预同步…")
         try:
-            result = prepare(config, log=_log)
+            result = prepare(config, log=_log, server=server)
             _log(f"[NSUM] 预同步完成：{result.summary()}")
         except Exception as exc:  # noqa: BLE001
             _log(f"[NSUM] 预同步失败：{exc}")
@@ -53,7 +53,7 @@ def on_server_start_pre(server):
         server.logger.info("[NSUM] 已在配置中关闭，跳过启动前同步")
         return
     server.logger.info("[NSUM] 启动前同步开始…")
-    result = prepare(config, log=server.logger.info)
+    result = prepare(config, log=server.logger.info, server=server)
     server.logger.info(f"[NSUM] 启动前同步完成：{result.summary()}")
 
 

@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from .config import Config, DEFAULT_CONFIG
+from . import cores
 from .prepare import prepare
 
 
@@ -48,7 +49,16 @@ def main(argv=None) -> int:
     parser.add_argument("--java", default="java", help="Java 可执行文件")
     parser.add_argument("--no-core", action="store_true", help="不安装/切换服务端核心")
     parser.add_argument("--allow-sync-failure", action="store_true", help="同步失败仍返回 0")
+    parser.add_argument("--list-cores", action="store_true", help="列出全部服务端核心（按分类）")
     args = parser.parse_args(argv)
+
+    if args.list_cores:
+        for category in cores.categories():
+            print(f"[{cores.CATEGORY_LABELS[category]}]")
+            for core in cores.by_category()[category]:
+                mark = " (支持插件)" if core.supports_plugins else ""
+                print(f"  {core.id:<10} {core.name}{mark}  handler={core.handler}")
+        return 0
 
     if not args.config and not args.repo:
         parser.print_help()
