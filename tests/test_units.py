@@ -10,7 +10,7 @@ from nsum_bridge.mcdr_config import handler_for
 from nsum_bridge.pluginsync import apply_plugin_folders
 from nsum_bridge.prepare import prepare
 from nsum_bridge.sync import build_command, describe_stage
-from nsum_bridge.installer import _looks_installed
+from nsum_bridge.installer import CORE_INSTALLERS, _looks_installed, _pick_asset
 
 
 class InstanceTests(unittest.TestCase):
@@ -93,6 +93,21 @@ class PluginFolderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(apply_plugin_folders(Path(tmp), log=lambda m: None), [])
 
+
+class AssetPickTests(unittest.TestCase):
+    def test_pick_asset_filters_sources_and_matches_mc(self):
+        assets = [
+            ("1.21.1-1.0", "arclight-forge-1.21.1-1.0.4.jar", "http://a"),
+            ("1.21.1-1.0", "arclight-forge-1.21.1-1.0.4-sources.jar", "http://b"),
+            ("1.20.1-1.0", "arclight-forge-1.20.1-1.0.0.jar", "http://c"),
+        ]
+        self.assertEqual(_pick_asset(assets, "1.21.1", ("arclight", "forge")), "http://a")
+        with self.assertRaises(RuntimeError):
+            _pick_asset(assets, "1.19.2", ("arclight", "forge"))
+
+    def test_every_core_has_installer(self):
+        for core in cores.CORES:
+            self.assertIn(core.id, CORE_INSTALLERS)
 
 class SyncAndInstallTests(unittest.TestCase):
     def test_build_command(self):

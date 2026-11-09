@@ -34,7 +34,7 @@ QUILT_INSTALLER_VERSION = "0.11.1"
 FORGE_MAVEN = "https://maven.minecraftforge.net/net/minecraftforge/forge/{mc}-{ver}/forge-{mc}-{ver}-installer.jar"
 NEOFORGE_MAVEN = "https://maven.neoforged.net/releases/net/neoforged/neoforge/{ver}/neoforge-{ver}-installer.jar"
 
-MANUAL_CORES = {"spigot", "pufferfish", "mohist", "arclight", "cardboard"}
+MANUAL_CORES: set = set()
 
 
 def _get_json(url: str) -> dict:
@@ -182,6 +182,107 @@ def install_geyser(instance: Instance, server_dir: Path, config, log: Log) -> No
     _download(GEYSER_STANDALONE, server_dir / "server.jar", log)
 
 
+# --------------------------------------------------------------------------- 其余插件服 / 混合服
+
+GITHUB_RELEASES = "https://api.github.com/repos/{repo}/releases"
+GITHUB_LATEST = "https://api.github.com/repos/{repo}/releases/latest"
+BUILDTOOLS = "https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar"
+
+
+def _github_assets(repo: str, limit: int = 30):
+    """返回 [(tag, name, url)]，按发布时间从新到旧。"""
+    releases = _get_json(GITHUB_RELEASES.format(repo=repo) + f"?per_page={limit}")
+    result = []
+    for release in releases:
+        tag = str(release.get("tag_name") or "")
+        for asset in release.get("assets", []):
+            name = str(asset.get("name") or "")
+            url = str(asset.get("browser_download_url") or "")
+            if name and url:
+                result.append((tag, name, url))
+    return result
+
+
+def _pick_asset(assets, mc_version: str, keywords) -> str:
+    """从 GitHub 资产里挑出匹配 MC 版本与关键字的一个。"""
+    lowered = [(tag, name, url) for tag, name, url in assets if name.lower().endswith(".jar")]
+    for tag, name, url in lowered:
+        text = f"{tag} {name}".lower()
+        if mc_version and mc_version not in text:
+            continue
+        if not any(keyword in text for keyword in keywords):
+            continue
+        if any(bad in text for bad in ("sources", "javadoc", "installer", "api")):
+            continue
+        return url
+    raise RuntimeError(f"没有找到匹配 {mc_version} 的构建（{', '.join(keywords)}）")
+
+
+def install_spigot(instance: Instance, server_dir: Path, config, log: Log) -> None:
+    """Spigot 需要 BuildTools 现编（依赖 git + JDK），全自动执行。"""
+    cache = _installer_cache(server_dir)
+    buildtools = cache / "BuildTools.jar"
+    if not buildtools.is_file():
+        _download(BUILDTOOLS, buildtools, log)
+    _run([config.java, "-jar", str(buildtools), "--rev", instance.game_version,
+          "--compile", "spigot"], cache, log)
+    produced = sorted(cache.glob(f"spigot-{instance.game_version}*.jar"))
+    if not produced:
+        produced = sorted(cache.glob("spigot-*.jar"))
+    if not produced:
+        raise RuntimeError("BuildTools 未生成 spigot jar，请检查 git/JDK 与网络")
+    (server_dir / "server.jar").write_bytes(produced[-1].read_bytes())
+    _write_eula(server_dir, log)
+
+
+def install_pufferfish(instance: Instance, server_dir: Path, config, log: Log) -> None:
+    job = f"Pufferfish-{instance.game_version}"
+    info = _get_json(f"https://ci.pufferfish.host/job/{job}/lastSuccessfulBuild/api/json")
+    artifacts = info.get("artifacts") or []
+    if not artifacts:
+        raise RuntimeError(f"Pufferfish {instance.game_version} 没有可用构建")
+    relative = artifacts[0]["relativePath"]
+    _download(f"https://ci.pufferfish.host/job/{job}/lastSuccessfulBuild/artifact/{relative}",
+              server_dir / "server.jar", log)
+    _write_eula(server_dir, log)
+
+
+def install_mohist(instance: Instance, server_dir: Path, config, log: Log) -> None:
+    url = None
+    try:
+        builds = _get_json(f"https://mohistmc.com/api/v2/projects/mohist/{instance.game_version}/builds")
+        entries = builds if isinstance(builds, list) else builds.get("builds", [])
+        if entries:
+            latest = entries[-1]
+            url = latest.get("downloadUrl") or latest.get("download") or latest.get("url")
+    except Exception:  # noqa: BLE001
+        url = None
+    if not url:
+        url = _pick_asset(_github_assets("MohistMC/Mohist"), instance.game_version, ("mohist", "server"))
+    _download(url, server_dir / "server.jar", log)
+    _write_eula(server_dir, log)
+
+
+def install_arclight(instance: Instance, server_dir: Path, config, log: Log) -> None:
+    loader = (instance.modloader or "forge").lower()
+    url = _pick_asset(_github_assets("IzzelAliz/Arclight"), instance.game_version, ("arclight", loader))
+    _download(url, server_dir / "server.jar", log)
+    _write_eula(server_dir, log)
+
+
+def install_cardboard(instance: Instance, server_dir: Path, config, log: Log) -> None:
+    try:
+        url = _pick_asset(_github_assets("CardboardPowered/cardboard"), instance.game_version,
+                          ("cardboard",))
+    except Exception:  # noqa: BLE001
+        latest = _get_json(GITHUB_LATEST.format(repo="CardboardPowered/cardboard"))
+        assets = [(str(latest.get("tag_name") or ""), str(a.get("name") or ""),
+                   str(a.get("browser_download_url") or "")) for a in latest.get("assets", [])]
+        url = _pick_asset(assets, instance.game_version, ("cardboard",))
+    _download(url, server_dir / "server.jar", log)
+    _write_eula(server_dir, log)
+
+
 # --------------------------------------------------------------------------- 路由
 
 CORE_INSTALLERS = {
@@ -193,6 +294,11 @@ CORE_INSTALLERS = {
     "paper": install_paper,
     "folia": install_folia,
     "purpur": install_purpur,
+    "spigot": install_spigot,
+    "pufferfish": install_pufferfish,
+    "mohist": install_mohist,
+    "arclight": install_arclight,
+    "cardboard": install_cardboard,
     "velocity": install_velocity,
     "waterfall": install_waterfall,
     "bungeecord": install_bungeecord,

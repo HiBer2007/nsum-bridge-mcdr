@@ -18,7 +18,7 @@ from .config import load_config
 from .instance import Instance
 from .prepare import PrepareResult, prepare
 
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.3.0"
 
 _server = None
 _logger = None
