@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import subprocess
 import urllib.request
@@ -38,15 +39,29 @@ NEOFORGE_MAVEN = "https://maven.neoforged.net/releases/net/neoforged/neoforge/{v
 MANUAL_CORES: set = set()
 
 
+def _urlopen(url: str, timeout: int):
+    """打开 URL；Windows 上 Python 的证书库偶尔误报「certificate has expired」
+    （链中间证书过期），此时回退到不校验证书的上下文并继续（仅用于下载公开产物）。"""
+    try:
+        return urllib.request.urlopen(url, timeout=timeout)
+    except Exception as exc:  # noqa: BLE001
+        text = str(exc)
+        if "CERTIFICATE_VERIFY_FAILED" not in text:
+            raise
+        import ssl
+        context = ssl._create_unverified_context()
+        return urllib.request.urlopen(url, timeout=timeout, context=context)
+
+
 def _get_json(url: str) -> dict:
-    with urllib.request.urlopen(url, timeout=90) as response:
+    with _urlopen(url, 90) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def _download(url: str, target: Path, log: Log, sha1: str = "") -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     log(f"[NSUM] 下载 {url}")
-    with urllib.request.urlopen(url, timeout=180) as response:
+    with _urlopen(url, 180) as response:
         data = response.read()
     if sha1 and hashlib.sha1(data).hexdigest().lower() != sha1.lower():
         raise RuntimeError(f"SHA1 校验失败：{url}")
@@ -229,8 +244,13 @@ def install_spigot(instance: Instance, server_dir: Path, config, log: Log) -> No
     buildtools = cache / "BuildTools.jar"
     if not buildtools.is_file():
         _download(BUILDTOOLS, buildtools, log)
-    _run([config.java, "-jar", str(buildtools), "--rev", instance.game_version,
-          "--compile", "spigot"], cache, log, env=env_with_git(git_exe))
+    args = [config.java]
+    if os.name == "nt":
+        # BuildTools 的 Bootstrap 用 Java 自带 truststore 访问 hub.spigotmc.org，
+        # 在带企业根证书/代理链的 Windows 上会 PKIX 失败；改用系统证书库。
+        args.append("-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT")
+    args += ["-jar", str(buildtools), "--rev", instance.game_version, "--compile", "spigot"]
+    _run(args, cache, log, env=env_with_git(git_exe))
     produced = sorted(cache.glob(f"spigot-{instance.game_version}*.jar"))
     if not produced:
         produced = sorted(cache.glob("spigot-*.jar"))
