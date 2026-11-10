@@ -1,6 +1,6 @@
 {
   "id": "nsum_bridge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "name": "NSUM Bridge (Server)",
   "description": "Sync NSUM modpack content and install/switch server core + loader before the server starts",
   "author": ["HiBerNET"],

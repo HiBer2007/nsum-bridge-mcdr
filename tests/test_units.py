@@ -116,8 +116,8 @@ class GitPathTests(unittest.TestCase):
         paths = [Path(p) for p in git_candidates(runtime)]
         self.assertEqual(paths[0].parts[-3:], ("git", "bin", "git.exe"))
         self.assertEqual(paths[1].parts[-4:], ("git", "mingw64", "bin", "git.exe"))
-        self.assertEqual(paths[2].parts[-3:], ("git", "cmd", "git.exe"))
-        self.assertEqual(paths[3].parts[-3:], ("git", "bin", "git.exe"))
+        self.assertEqual(paths[2].parts[-4:], ("git", "ucrt64", "bin", "git.exe"))
+        self.assertEqual(paths[3].parts[-3:], ("git", "cmd", "git.exe"))
 
     def test_env_prepends_git_dir(self):
         git = Path(tempfile.mkdtemp()) / "tools/git/mingw64/bin/git.exe"
