@@ -8,6 +8,7 @@ from nsum_bridge.config import Config, DEFAULT_CONFIG
 from nsum_bridge.instance import Instance, normalize_branch_type, normalize_loader
 from nsum_bridge.mcdr_config import handler_for
 from nsum_bridge.pluginsync import apply_plugin_folders
+from nsum_bridge.gitpath import env_with_git, git_candidates, resolve_git
 from nsum_bridge.prepare import prepare
 from nsum_bridge.sync import build_command, describe_stage
 from nsum_bridge.installer import CORE_INSTALLERS, _looks_installed, _pick_asset
@@ -108,6 +109,23 @@ class AssetPickTests(unittest.TestCase):
     def test_every_core_has_installer(self):
         for core in cores.CORES:
             self.assertIn(core.id, CORE_INSTALLERS)
+
+class GitPathTests(unittest.TestCase):
+    def test_candidate_order(self):
+        runtime = Path(tempfile.mkdtemp()) / "NeoServerUpdateModpack.exe"
+        paths = [Path(p) for p in git_candidates(runtime)]
+        self.assertEqual(paths[0].parts[-3:], ("git", "bin", "git.exe"))
+        self.assertEqual(paths[1].parts[-4:], ("git", "mingw64", "bin", "git.exe"))
+        self.assertEqual(paths[2].parts[-3:], ("git", "cmd", "git.exe"))
+        self.assertEqual(paths[3].parts[-3:], ("git", "bin", "git.exe"))
+
+    def test_env_prepends_git_dir(self):
+        git = Path(tempfile.mkdtemp()) / "tools/git/mingw64/bin/git.exe"
+        env = env_with_git(git, {"PATH": "C:/Windows"})
+        self.assertTrue(env["PATH"].startswith(str(git.parent)))
+
+    def test_bad_override_returns_none(self):
+        self.assertIsNone(resolve_git(Path(tempfile.mkdtemp()), "Z:/no/such/git.exe"))
 
 class SyncAndInstallTests(unittest.TestCase):
     def test_build_command(self):

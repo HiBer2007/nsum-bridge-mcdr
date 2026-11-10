@@ -17,6 +17,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "server_dir": "server",
     "nsum_runtime": "NeoServerUpdateModpack",
     "java": "java",
+    "git": "",
     "sync_format": "hmcl",
     "auto_install_core": True,
     "launch_on_sync_failure": False,
@@ -57,6 +58,10 @@ class Config:
         value = self.raw.get("nsum_runtime") or "NeoServerUpdateModpack"
         path = Path(value)
         return path if path.is_absolute() else (self.base_dir / path).resolve()
+
+    @property
+    def git(self) -> str:
+        return str(self.raw.get("git") or "")
 
     @property
     def java(self) -> str:

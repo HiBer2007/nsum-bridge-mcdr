@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from . import cores
+from .gitpath import env_with_git, resolve_git
 from .instance import Instance, normalize_loader
 
 Log = Callable[[str], None]
@@ -53,11 +54,11 @@ def _download(url: str, target: Path, log: Log, sha1: str = "") -> Path:
     return target
 
 
-def _run(cmd, cwd: Path, log: Log) -> None:
+def _run(cmd, cwd: Path, log: Log, env=None) -> None:
     log("[NSUM] 执行：" + " ".join(str(c) for c in cmd))
     proc = subprocess.run(cmd, cwd=str(cwd), stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT, text=True, encoding="utf-8",
-                          errors="replace")
+                          errors="replace", env=env)
     if proc.returncode != 0:
         tail = "\n".join((proc.stdout or "").splitlines()[-15:])
         raise RuntimeError(f"命令失败（exit={proc.returncode}）：{tail}")
@@ -219,13 +220,17 @@ def _pick_asset(assets, mc_version: str, keywords) -> str:
 
 
 def install_spigot(instance: Instance, server_dir: Path, config, log: Log) -> None:
-    """Spigot 需要 BuildTools 现编（依赖 git + JDK），全自动执行。"""
+    """Spigot 需要 BuildTools 现编：git 用 NSUM 内置 Git（tools/git），JDK 用配置的 java。"""
+    git_exe = resolve_git(config.nsum_runtime.parent if config.nsum_runtime.is_file() else config.nsum_runtime, getattr(config, "git", ""))
+    if git_exe is None:
+        raise RuntimeError("未找到内置 Git（<安装目录>/tools/git）；请先运行 NeoServerUpdateModpack exec git-update")
+    log(f"[NSUM] Spigot BuildTools 使用 Git：{git_exe}")
     cache = _installer_cache(server_dir)
     buildtools = cache / "BuildTools.jar"
     if not buildtools.is_file():
         _download(BUILDTOOLS, buildtools, log)
     _run([config.java, "-jar", str(buildtools), "--rev", instance.game_version,
-          "--compile", "spigot"], cache, log)
+          "--compile", "spigot"], cache, log, env=env_with_git(git_exe))
     produced = sorted(cache.glob(f"spigot-{instance.game_version}*.jar"))
     if not produced:
         produced = sorted(cache.glob("spigot-*.jar"))
